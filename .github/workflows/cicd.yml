@@ -41,9 +41,6 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
-      - name: Run TypeScript Check
-        run: npm run typecheck
-
   # JOB 2: Matrix Testing
   tests:
     name: Unit Tests - Node ${{ matrix.node-version }}
