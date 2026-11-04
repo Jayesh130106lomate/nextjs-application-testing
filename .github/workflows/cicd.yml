@@ -57,6 +57,31 @@ jobs:
     with:
       node-version: ${{ matrix.node-version }}
 
+  # JOB: Dependency Security Audit
+  dependency-audit:
+    name: npm Dependency Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Validate Lockfile and Install Dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Scan Dependencies
+        run: npm audit --audit-level=high
+
   # JOB 3: Production Build
   build:
     name: Production Build
@@ -64,6 +89,7 @@ jobs:
     needs:
       - quality
       - tests
+      - dependency-audit
 
     runs-on: ubuntu-latest
     timeout-minutes: 20

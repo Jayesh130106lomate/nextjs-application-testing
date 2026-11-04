@@ -1,0 +1,23 @@
+name: dependency review
+on:
+    pull_request:
+        branches:
+            - main
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    dependency-review:
+        name: Dependency Review
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@v7
+
+            - name: Dependency Review
+              uses: actions/dependency-review-action@v3
+              with:
+                  fail-on-severity: high
