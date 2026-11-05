@@ -40,3 +40,19 @@ updates:
     labels:
       - dependencies
       - github-actions
+
+  # Docker dependencies (Dockerfile base images)
+  - package-ecosystem: docker
+    directory: "/"
+
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+
+    open-pull-requests-limit: 5
+
+    labels:
+      - dependencies
+      - docker

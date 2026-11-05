@@ -63,6 +63,39 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ==================================
+      # SBOM GENERATION
+      # ==================================
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: local/nextjs:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+          # Upload explicitly in the next step
+          upload-artifact: false
+          upload-release-assets: false
+
+      # ==================================
+      # VULNERABILITY SCANNING
+      # ==================================
+
+      - name: Scan SBOM with Grype
+        id: grype
+        uses: anchore/scan-action@v7
+        with:
+          sbom: sbom.cdx.json
+
+          fail-build: true
+          severity-cutoff: high
+
+          output-format: sarif
+          output-file: grype.sarif
+
+          cache-db: true
+
       # Scan the exact local image
       - name: Trivy Container Vulnerability Scan
         uses: aquasecurity/trivy-action@v0.36.0
@@ -73,6 +106,21 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: HIGH,CRITICAL
+
+      # ==================================
+      # SAVE SECURITY EVIDENCE
+      # ==================================
+
+      - name: Upload SBOM and Grype Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-and-grype-${{ github.sha }}
+          path: |
+            sbom.cdx.json
+            grype.sarif
+          if-no-files-found: warn
+          retention-days: 30
 
       # Archive only after a successful scan
       - name: Save Scanned Image

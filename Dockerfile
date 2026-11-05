@@ -38,6 +38,16 @@ ENV PORT=3000
 
 ENV HOSTNAME="0.0.0.0"
 
+# Remove package managers not needed at runtime to eliminate bundled vulnerabilities and reduce attack surface
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+           /opt/yarn* \
+           /usr/local/bin/npm \
+           /usr/local/bin/npx \
+           /usr/local/bin/corepack \
+           /usr/local/bin/yarn \
+           /usr/local/bin/yarnpkg
+
 # Create an unprivileged user
 RUN addgroup -S -g 1001 nodejs && \
     adduser -S -u 1001 -G nodejs nextjs
