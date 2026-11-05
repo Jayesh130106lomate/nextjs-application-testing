@@ -1,0 +1,21 @@
+title = "product security detection policy"
+
+[extend]
+useDefault = true
+
+[[rules]]
+
+id = "lab-demo-secret"
+
+description = "Detect synthetic training secret markers"
+
+regex = '''LAB_SECRET_[A-Z0-9]{24,}'''
+
+keywords = [
+  "LAB_SECRET_"
+]
+
+tags = [
+  "training",
+  "secret"
+]

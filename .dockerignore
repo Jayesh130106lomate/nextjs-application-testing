@@ -1,0 +1,41 @@
+
+# Git
+.git
+.gitignore
+
+# GitHub workflows
+.github
+
+# Dependencies
+node_modules
+
+# Next.js build output
+.next
+out
+
+# Environment files and credentials
+.env
+.env.*
+
+# Private keys
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+
+# Tests and coverage
+coverage
+.nyc_output
+
+# Local development files
+.vscode
+.idea
+
+# OS files
+.DS_Store
+
+#artifacts
+
+sbom.*
