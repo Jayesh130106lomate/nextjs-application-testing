@@ -1,0 +1,139 @@
+
+name: Secure Docker CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # =================================
+  # JOB 1: Build and Scan
+  # =================================
+
+  build-and-scan:
+    name: Build and Scan Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    permissions:
+      contents: read
+
+    outputs:
+      image_name: ${{ steps.image.outputs.name }}
+
+    steps:
+
+      - name: Checkout Source Code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Normalize Image Name
+        id: image
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Build without publishing
+      - name: Build Docker Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: local/nextjs:${{ github.sha }}
+
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Scan the exact local image
+      - name: Trivy Container Vulnerability Scan
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: local/nextjs:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      # Archive only after a successful scan
+      - name: Save Scanned Image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker save local/nextjs:${{ github.sha }} \
+            --output /tmp/nextjs-image.tar
+
+      - name: Upload Scanned Image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-scanned-image
+          path: /tmp/nextjs-image.tar
+          retention-days: 1
+
+
+  # =================================
+  # JOB 2: Publish to GHCR
+  # =================================
+
+  publish:
+    name: Publish Verified Image
+    needs:
+      - build-and-scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+
+      - name: Download Scanned Image
+        uses: actions/download-artifact@v4
+        with:
+          name: nextjs-scanned-image
+          path: /tmp/scanned-image
+
+      - name: Load Docker Image
+        run: |
+          docker load \
+            --input /tmp/scanned-image/nextjs-image.tar
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and Publish Image
+        env:
+          IMAGE_NAME: ${{ needs.build-and-scan.outputs.image_name }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker tag \
+            "local/nextjs:${IMAGE_TAG}" \
+            "${IMAGE_NAME}:${IMAGE_TAG}"
+
+          docker push "${IMAGE_NAME}:${IMAGE_TAG}"
+
