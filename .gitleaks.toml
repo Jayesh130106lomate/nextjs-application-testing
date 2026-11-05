@@ -1,6 +1,6 @@
 title = "product security detection policy"
 
-[[extend]]
+[extend]
 useDefault = true
 
 [[rules]]
