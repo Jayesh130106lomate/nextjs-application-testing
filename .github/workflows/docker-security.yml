@@ -39,7 +39,7 @@ jobs:
     steps:
 
       - name: Checkout Source Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
@@ -49,11 +49,11 @@ jobs:
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Build without publishing
       - name: Build Docker Image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: false
@@ -68,7 +68,7 @@ jobs:
       # ==================================
 
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: local/nextjs:${{ github.sha }}
           format: cyclonedx-json
@@ -84,7 +84,7 @@ jobs:
 
       - name: Scan SBOM with Grype
         id: grype
-        uses: anchore/scan-action@v7
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           sbom: sbom.cdx.json
 
@@ -98,7 +98,7 @@ jobs:
 
       # Scan the exact local image
       - name: Trivy Container Vulnerability Scan
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: local/nextjs:${{ github.sha }}
           format: table
@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload SBOM and Grype Report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sbom-and-grype-${{ github.sha }}
           path: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload Scanned Image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nextjs-scanned-image
           path: /tmp/nextjs-image.tar
@@ -153,14 +153,28 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
+      artifacts: write
 
     steps:
 
       - name: Download Scanned Image
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: nextjs-scanned-image
           path: /tmp/scanned-image
+
+      - name: Download SBOM evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sbom-and-grype-${{ github.sha }}
+          path: evidence
+
+      - name: Check SBOM evidence
+        run: |
+          test -s evidence/sbom.cdx.json
+          echo "SBOM file found"
 
       - name: Load Docker Image
         run: |
@@ -168,11 +182,17 @@ jobs:
             --input /tmp/scanned-image/nextjs-image.tar
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Verify Cosign installation
+        run: cosign version
 
       - name: Tag and Publish Image
         env:
@@ -183,5 +203,78 @@ jobs:
             "local/nextjs:${IMAGE_TAG}" \
             "${IMAGE_NAME}:${IMAGE_TAG}"
 
+          docker tag \
+            "local/nextjs:${IMAGE_TAG}" \
+            "${IMAGE_NAME}:sha-${IMAGE_TAG}"
+
           docker push "${IMAGE_NAME}:${IMAGE_TAG}"
+          docker push "${IMAGE_NAME}:sha-${IMAGE_TAG}"
+
+      - name: Resolve pushed image digest
+        id: image
+        shell: bash
+        env:
+          GHCR_IMAGE: ghcr.io/${{ github.repository }}
+          IMAGE_TAG: sha-${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          IMAGE="$(printf '%s' "$GHCR_IMAGE" | tr '[:upper:]' '[:lower:]')"
+
+          DIGEST="$(
+            docker buildx imagetools inspect \
+              "${IMAGE}:${IMAGE_TAG}" \
+              --format '{{json .Manifest}}' |
+            jq -r '.digest'
+          )"
+
+          if [[ ! "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Unable to obtain a valid image digest"
+            exit 1
+          fi
+
+          echo "name=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+          echo "Image: $IMAGE"
+          echo "Digest: $DIGEST"
+
+      - name: Sign container image with Cosign
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Verify signed container image
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          OWNER: ${{ github.repository_owner }}
+          WORKFLOW_FILE: docker-security.yml
+        run: |
+          set -euo pipefail
+
+          EXPECTED_IDENTITY="https://github.com/${OWNER}/${GITHUB_REPOSITORY#*/}/.github/workflows/${WORKFLOW_FILE}@refs/heads/main"
+
+          cosign verify "${IMAGE}@${DIGEST}" \
+            --certificate-identity "$EXPECTED_IDENTITY" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+      - name: Generate build provenance attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          sbom-path: evidence/sbom.cdx.json
+          push-to-registry: true
 
