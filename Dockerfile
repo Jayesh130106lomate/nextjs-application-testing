@@ -1,4 +1,4 @@
-FROM node:26-alpine AS base
+FROM node:24-bookworm-slim AS base
 
 WORKDIR /app
 
@@ -24,47 +24,24 @@ ENV NODE_ENV=production
 
 RUN npm run build
 
-# stage 4 
+# stage 4  runtime {production}
 
-FROM base AS runner
+FROM cgr.dev/chainguard/node:latest AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-
 ENV NEXT_TELEMETRY_DISABLED=1
-
 ENV PORT=3000
-
 ENV HOSTNAME="0.0.0.0"
 
-# Remove package managers not needed at runtime to eliminate bundled vulnerabilities and reduce attack surface
-RUN rm -rf /usr/local/lib/node_modules/npm \
-           /usr/local/lib/node_modules/corepack \
-           /opt/yarn* \
-           /usr/local/bin/npm \
-           /usr/local/bin/npx \
-           /usr/local/bin/corepack \
-           /usr/local/bin/yarn \
-           /usr/local/bin/yarnpkg
+# Copy runtime assets owned by Chainguard's built-in 'node' user
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
-# Create an unprivileged user
-RUN addgroup -S -g 1001 nodejs && \
-    adduser -S -u 1001 -G nodejs nextjs
-
-# Copy only required runtime files
-COPY --from=builder --chown=nextjs:nodejs \
-    /app/public ./public
-
-COPY --from=builder --chown=nextjs:nodejs \
-    /app/.next/standalone ./
-
-COPY --from=builder --chown=nextjs:nodejs \
-    /app/.next/static ./.next/static
-
-# Do not run as root
-USER nextjs
+USER node
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["server.js"]

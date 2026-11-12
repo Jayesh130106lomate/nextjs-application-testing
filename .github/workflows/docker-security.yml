@@ -155,7 +155,7 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      artifacts: write
+      artifact-metadata: write
 
     steps:
 

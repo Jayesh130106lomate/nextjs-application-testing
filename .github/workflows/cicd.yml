@@ -45,8 +45,6 @@ jobs:
   # JOB 2: Matrix Testing
   tests:
     name: Unit Tests - Node ${{ matrix.node-version }}
-    permissions:
-      id-token: write
 
     strategy:
       fail-fast: false
