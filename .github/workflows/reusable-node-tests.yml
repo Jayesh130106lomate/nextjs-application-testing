@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
     tests:
@@ -29,7 +28,7 @@ jobs:
               with:
                 node-version: ${{ inputs.node-version }}
                 cache: "npm"
-                dependency-path: package-lock.json
+                cache-dependency-path: package-lock.json
             
             - name: Install dependencies
               run: npm ci
