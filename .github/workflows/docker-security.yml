@@ -89,7 +89,7 @@ jobs:
           sbom: sbom.cdx.json
 
           fail-build: true
-          severity-cutoff: high
+          severity-cutoff: low
 
           output-format: sarif
           output-file: grype.sarif
