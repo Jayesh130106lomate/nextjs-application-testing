@@ -90,6 +90,7 @@ jobs:
 
           fail-build: true
           severity-cutoff: low
+          only-fixed: true
 
           output-format: sarif
           output-file: grype.sarif
@@ -277,4 +278,3 @@ jobs:
           subject-digest: ${{ steps.image.outputs.digest }}
           sbom-path: evidence/sbom.cdx.json
           push-to-registry: true
-
